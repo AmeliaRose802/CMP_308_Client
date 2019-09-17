@@ -118,10 +118,7 @@ int main()
 
 		// Copy the line into the buffer, filling the rest with dashes.
 		memcpy(buffer, line.c_str(), line.size());
-
-		// Send the message to the server.
-		;
-
+		
 		// Check for error from send
 		if (send(sock, buffer, MESSAGESIZE, 0) == ERROR_VALUE) {
 			die("Send failed: " + WSAGetLastError());
