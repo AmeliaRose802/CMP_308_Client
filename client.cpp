@@ -12,6 +12,8 @@
 #include <string.h>
 #include <string>
 #include <winsock2.h>
+#include <sstream>
+#include <iomanip>
 
 #pragma comment(lib, "ws2_32.lib")
 
@@ -111,18 +113,28 @@ int main()
 		// Read a line of text from the user.
 		std::string line;
 		std::getline(std::cin, line);
+
 		// Now "line" contains what the user typed (without the trailing \n).
 
-		// Resize line to the correct message length. If it's to long truncate it and if its too short pad it
-		line.resize(MESSAGESIZE, '-');
-
-		// Copy the line into the buffer, filling the rest with dashes.
-		memcpy(buffer, line.c_str(), line.size());
+		//Get the length 
 		
-		// Check for error from send
-		if (send(sock, buffer, MESSAGESIZE, 0) == ERROR_VALUE) {
+		std::stringstream ss;
+		ss << std::setw(5) << std::setfill('0') << line.size();
+		std::string lineLength = ss.str();
+		
+
+		line.insert(0, lineLength);
+		std::cout << line;
+
+		// Copy the line into the buffer
+		memcpy(buffer, line.c_str(), line.size());
+
+
+		if (send(sock, buffer, line.size(), 0) == ERROR_VALUE) {
 			die("Send failed: " + WSAGetLastError());
 		}
+		
+
 
 		// Read a response back from the server.
 		int count = recv(sock, buffer, MESSAGESIZE, 0);
