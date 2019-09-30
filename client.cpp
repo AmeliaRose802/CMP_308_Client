@@ -105,8 +105,12 @@ int main()
 		die("Expected \"" WELCOME "\" upon connection, but got something else");
 	}
 
+	char * messageBuffer;
+
 	while (true)
 	{
+		
+
 		printf("Type some text (\"quit\" to exit): ");
 		fflush(stdout);
 
@@ -114,30 +118,37 @@ int main()
 		std::string line;
 		std::getline(std::cin, line);
 
-		// Now "line" contains what the user typed (without the trailing \n).
-
-		//Get the length 
-		
+		//Append the length
 		std::stringstream ss;
-		ss << std::setw(5) << std::setfill('0') << line.size();
-		std::string lineLength = ss.str();
-		
+		ss << std::setw(5) << std::setfill('0') << line.size() << line;
+		line = ss.str();
+	
 
-		line.insert(0, lineLength);
-		std::cout << line;
+		messageBuffer = new char[line.length()];
 
 		// Copy the line into the buffer
-		memcpy(buffer, line.c_str(), line.size());
+		memcpy(messageBuffer, line.c_str(), line.size());
 
 
-		if (send(sock, buffer, line.size(), 0) == ERROR_VALUE) {
+		if (send(sock, messageBuffer, line.size(), 0) == ERROR_VALUE) {
 			die("Send failed: " + WSAGetLastError());
 		}
-		
-
+		delete messageBuffer;
+		messageBuffer = NULL;
 
 		// Read a response back from the server.
-		int count = recv(sock, buffer, MESSAGESIZE, 0);
+		char  messageLength[5];
+		recv(sock, messageLength, 5, 0);
+
+		int length;
+		std::istringstream(messageLength) >> length;
+
+		std::cout << "Message Length: " << length << std::endl;
+
+		messageBuffer = new char[length];
+
+		// Receive as the number of bytes of data expected
+		int count = recv(sock, messageBuffer, length, 0);
 
 
 		// Check for error from recv
@@ -151,7 +162,7 @@ int main()
 		}
 
 		printf("Received %d bytes from the server: '", count);
-		fwrite(buffer, 1, count, stdout);
+		fwrite(messageBuffer, 1, count, stdout);
 		printf("'\n");
 	}
 
