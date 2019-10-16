@@ -1,9 +1,8 @@
-/*	AG0907 Lab 2 TCP client example - by Henry Fortuna and Adam Sampson
+/*	AG0907 Lab 4 UDP client example - by Henry Fortuna and Adam Sampson
 
-	A simple client that connects to a server and waits for
-	a response. The server sends "hello" when the client first
-	connects. Text typed is then sent to the server which echos
-	it back, and the response is printed out.
+	When the user types a message, the client sends it to the server
+	as a UDP packet. The server then sends a packet back to the
+	client, and the client prints it out.
 */
 
 #include <iostream>
@@ -12,33 +11,50 @@
 #include <string.h>
 #include <string>
 #include <winsock2.h>
-#include <sstream>
-#include <iomanip>
+#include "Message.h"
+#include <Windows.h>
+#include <time.h>
+#include <map>
 
 #pragma comment(lib, "ws2_32.lib")
 
 
-// The IP address of the server to connect to
+// The IP address of the server
 #define SERVERIP "127.0.0.1"
 
-// The TCP port number on the server to connect to
-#define SERVERPORT 5555
-
-#define ERROR_VALUE -1
-
-// The message the server will send when the client connects
-#define WELCOME "hello"
+// The UDP port number on the server
+#define SERVERPORT 4444
 
 // The (fixed) size of message that we send between the two programs
 #define MESSAGESIZE 40
-
+#define LOOP_DELAY 1000
 
 // Prototypes
 void die(const char *message);
 
+void printMap(std::map<int, GameObject> objects) {
+	for (auto elem : objects)
+	{
+		elem.second.print();
+	}
+}
+
 
 int main()
 {
+	//Create the readible set
+	fd_set readable;
+	FD_ZERO(&readable);
+
+	timeval timeout;
+
+	std::map<int, GameObject> gameObjects;
+
+	timeout.tv_sec = 1;
+	timeout.tv_usec = 0;
+
+
+	srand(time(NULL));
 	printf("Client Program\n");
 
 	// Initialise the WinSock library -- we want version 2.2.
@@ -53,106 +69,93 @@ int main()
 		die("Wrong WinSock version");
 	}
 
-	// Create a TCP socket that we'll connect to the server
-	SOCKET sock = socket(AF_INET, SOCK_STREAM, 0);
-
-	// Check for errors from socket
-	if (sock == INVALID_SOCKET) {
-		die("Creating Socket Failed: " + WSAGetLastError());
+	// Create a UDP socket.
+	SOCKET sock = socket(AF_INET, SOCK_DGRAM, 0);
+	if (sock == INVALID_SOCKET)
+	{
+		die("socket failed");
 	}
 
 	// Fill out a sockaddr_in structure with the address that
-	// we want to connect to.
-	sockaddr_in addr;
-	addr.sin_family = AF_INET;
+	// we want to send to.
+	sockaddr_in toAddr;
+	toAddr.sin_family = AF_INET;
 	// htons converts the port number to network byte order (big-endian).
-	addr.sin_port = htons(SERVERPORT);
-	addr.sin_addr.s_addr = inet_addr(SERVERIP);
-	
+	toAddr.sin_port = htons(SERVERPORT);
+	toAddr.sin_addr.s_addr = inet_addr(SERVERIP);
+
 	// inet_ntoa formats an IP address as a string.
-	printf("IP address to connect to: %s\n", inet_ntoa(addr.sin_addr));
+	printf("IP address to send to: %s\n", inet_ntoa(toAddr.sin_addr));
 	// ntohs does the opposite of htons.
-	printf("Port number to connect to: %d\n\n", ntohs(addr.sin_port));
+	printf("Port number to send to: %d\n\n", ntohs(toAddr.sin_port));
 
-	// Connect the socket to the server.
-	if (connect(sock, (const sockaddr *) &addr, sizeof addr) == SOCKET_ERROR)
-	{
-		die("connect failed");
-	}
-
-	printf("Connected to server\n");
-
-	// We'll use this buffer to hold what we receive from the server.
+	// We'll use this buffer to hold the messages we exchange with the server.
 	char buffer[MESSAGESIZE];
 
-	// We expect the server to send us a welcome message (WELCOME) when we connect.
+	bool shouldLoop = true;
 
-	//Receive a message and check for errors, or for unexpected message size
+	int t = 0;
 
-	if (recv(sock, buffer, MESSAGESIZE, 0) == ERROR_VALUE) {
-		die("recv failed: "+ WSAGetLastError());
-	}
+	//Create an object in the game and assign it a random ID
+	GameObject player(rand(), 0, 0);
 
+	std::cout << "MY OBJECT: ";
+	player.print();
 
-	if (sizeof(buffer) != MESSAGESIZE) {
-		die("Unexpected message size");
-	}
-	
+	//This is going to send messages as fast as it can hear back from server or at least every 1 secound. Not sure if more delay is desirable
+	while (shouldLoop) {
+		FD_SET(sock, &readable);
 
-	// Check it's what we expected.
-	if (memcmp(buffer, WELCOME, strlen(WELCOME)) != 0)
-	{
-		die("Expected \"" WELCOME "\" upon connection, but got something else");
-	}
+		player.moveCircle(t);
 
-	while (true)
-	{
-		printf("Type some text (\"quit\" to exit): ");
-		fflush(stdout);
+		Message msg(player.id, player.x, player.y);
 
-		// Read a line of text from the user.
-		std::string line;
-		std::getline(std::cin, line);
-
-		// Now "line" contains what the user typed (without the trailing \n).
-
-		//Get the length 
-		
-		std::stringstream ss;
-		ss << std::setw(5) << std::setfill('0') << line.size();
-		std::string lineLength = ss.str();
-		
-
-		line.insert(0, lineLength);
-		std::cout << line;
-
-		// Copy the line into the buffer
-		memcpy(buffer, line.c_str(), line.size());
-
-
-		if (send(sock, buffer, line.size(), 0) == ERROR_VALUE) {
-			die("Send failed: " + WSAGetLastError());
-		}
-		
-
-
-		// Read a response back from the server.
-		int count = recv(sock, buffer, MESSAGESIZE, 0);
-
-
-		// Check for error from recv
-		if (count == 0)
+		if (sendto(sock, (const char *)&msg, sizeof(Message), 0, (const sockaddr *)&toAddr, sizeof(toAddr)) != sizeof(Message))
 		{
-			printf("Server closed connection\n");
-			break;
-		}
-		else if (count == ERROR_VALUE) {
-			die("Recv failed: " + WSAGetLastError());
+			die("sendto failed");
 		}
 
-		printf("Received %d bytes from the server: '", count);
-		fwrite(buffer, 1, count, stdout);
-		printf("'\n");
+
+		int count = select(0, &readable, NULL, NULL, &timeout);
+		if (count < 0) {
+			die("Select failed");
+		}
+
+		//This works so long as the server starts before the client. Otherwise it fails. 
+		if (FD_ISSET(sock, &readable))
+		{
+			count = recvfrom(sock, (char *)&msg, sizeof(Message), 0, NULL, NULL);
+
+			
+			
+			if (count < 0)
+			{
+				die("recvfrom failed");
+			}
+			if (count != sizeof(Message))
+			{
+				die("received odd-sized message");
+			}
+
+
+			//Check if the gameobject list has heard of this object before
+			if (gameObjects.count(msg.objectID)) {
+				gameObjects[msg.objectID].update(msg.x, msg.y);
+			}
+			else {
+				std::cout << "New object\n";
+				gameObjects.insert(std::pair<int, GameObject>(msg.objectID, GameObject(msg.objectID, msg.x, msg.y)));
+			}
+
+
+
+			//Keeps it only sending every 1 sec even if it heard back sooner
+			Sleep(LOOP_DELAY);
+		}
+
+		printMap(gameObjects);
+
+		t += LOOP_DELAY;
 	}
 
 	printf("Quitting\n");
@@ -166,7 +169,8 @@ int main()
 
 
 // Print an error message and exit.
-void die(const char *message) {
+void die(const char *message)
+{
 	fprintf(stderr, "Error: %s (WSAGetLastError() = %d)\n", message, WSAGetLastError());
 
 #ifdef _DEBUG
